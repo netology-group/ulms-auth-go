@@ -1,0 +1,13 @@
+[authn."iam.internal"]
+audience = ["internal"]
+key = "fixtures/com.example.iam.key"
+trusted = true
+
+[authn."iam.example.com"]
+audience = ["example.com"]
+key = "fixtures/com.example.iam.key"
+[authz."example.com"]
+
+[authn."iam.example-wrong.com"]
+audience = ["example-wrong.com"]
+key = "fixtures/com.example.iam.key"

@@ -1,0 +1,19 @@
+language: go
+go:
+- "1.12.x"
+branches:
+  only:
+  - master
+jobs:
+  include:
+  - name: golint
+    before_script:
+    - go get golang.org/x/lint/golint
+    script:
+    - golint -set_exit_status ./...
+  - name: tests
+    before_script:
+    - go get ./...
+    - go get github.com/stretchr/testify
+    script:
+    - go test -v ./...

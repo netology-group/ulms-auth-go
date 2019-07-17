@@ -1,2 +1,4 @@
 # ulms-auth-go
-authentication and authorization library
+Authentication and authorization library
+
+[![Build Status](https://travis-ci.com/netology-group/ulms-auth-go.svg?branch=master)](https://travis-ci.com/netology-group/ulms-auth-go)
