@@ -13,7 +13,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -155,8 +154,7 @@ type tenant struct {
 	Key       string
 	IsTrusted bool `toml:"trusted"`
 
-	key  []byte
-	once sync.Once
+	key []byte
 }
 
 func (tenant *tenant) Trusted() bool {
