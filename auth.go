@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"github.com/BurntSushi/toml"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -46,11 +46,8 @@ type contextKey string
 
 const tokenContextKey = contextKey("token")
 
-// ErrAuthorization indicates 403 Forbidden HTTP status code
-var ErrAuthorization = fmt.Errorf("not authorized")
-
-// ErrTenant indicates tenant error
-var ErrTenant = fmt.Errorf("error performing tenant request, see server logs for details")
+// ErrorNotAuthorized indicates 403 Forbidden HTTP status code
+var ErrorNotAuthorized = fmt.Errorf("not authorized")
 
 // Auth is interface containing methods to authenticate and authorize users
 type Auth interface {
@@ -141,7 +138,7 @@ func (auth *TenantAuth) TokenValidationMiddleware() func(next http.Handler) http
 				}
 				return nil, fmt.Errorf("JWT: audience=%v for issuer=%v is not allowed", claims.Audience, claims.Issuer)
 			audienceVerified:
-				return tenant.keyBytes(), nil
+				return tenant.keyBytes()
 			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -166,15 +163,15 @@ func (tenant *tenant) Trusted() bool {
 	return tenant.IsTrusted
 }
 
-func (tenant *tenant) keyBytes() []byte {
-	tenant.once.Do(func() {
+func (tenant *tenant) keyBytes() ([]byte, error) {
+	if tenant.key == nil {
 		if key, err := ioutil.ReadFile(tenant.Key); err == nil {
 			tenant.key = bytes.TrimSpace(key)
 		} else {
-			logrus.WithError(err).Panic("can't read tenant key file")
+			return nil, err
 		}
-	})
-	return tenant.key
+	}
+	return tenant.key, nil
 }
 
 type permission struct {
@@ -200,10 +197,10 @@ func (permission *permission) Check(claims *jwt.StandardClaims, action Action, o
 			request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", permission.Token))
 			request.Header.Set("Accept", "application/json")
 			request.Header.Set("Content-Type", "application/json; charset=utf-8")
-			if response, err = httpClient().Do(request, permission.metrics); err == nil {
+			if response, err = client.do(request, permission.metrics); err == nil {
 				defer response.Body.Close()
-				if response.StatusCode >= 300 {
-					err = fmt.Errorf("bad response status code: %v", response.StatusCode)
+				if response.StatusCode != 200 {
+					err = fmt.Errorf("non-200 response status code: %v", response.StatusCode)
 				} else {
 					err = json.NewDecoder(response.Body).Decode(&authorizedActions)
 				}
@@ -211,15 +208,14 @@ func (permission *permission) Check(claims *jwt.StandardClaims, action Action, o
 		}
 	}
 	if err != nil {
-		logrus.WithError(err).WithField("url", permission.URL).Error("error performing tenant request")
-		return ErrTenant
+		return errors.Wrapf(err, "error performing authz request, URL: %v", permission.URL)
 	}
 	for _, authorizedAction := range authorizedActions {
 		if action == authorizedAction {
 			return nil
 		}
 	}
-	return ErrAuthorization
+	return ErrorNotAuthorized
 }
 
 type authorizationRequest struct {

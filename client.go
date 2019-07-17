@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var client = &http.Client{
+var client = &withMetrics{&http.Client{
 	Timeout: 5 * time.Second,
 	Transport: &http.Transport{
 		DialContext: (&net.Dialer{
@@ -16,15 +16,13 @@ var client = &http.Client{
 		}).DialContext,
 		TLSHandshakeTimeout: 1 * time.Second,
 	},
-}
+}}
 
-// WithMetrics provides metrics for Prometheus
-type WithMetrics struct {
+type withMetrics struct {
 	*http.Client
 }
 
-// Do request
-func (c WithMetrics) Do(r *http.Request, metrics prometheus.ObserverVec) (*http.Response, error) {
+func (c *withMetrics) do(r *http.Request, metrics prometheus.ObserverVec) (*http.Response, error) {
 	start := time.Now()
 	response, err := c.Client.Do(r)
 	if err == nil && metrics != nil {
@@ -33,9 +31,4 @@ func (c WithMetrics) Do(r *http.Request, metrics prometheus.ObserverVec) (*http.
 			Observe(time.Since(start).Seconds())
 	}
 	return response, err
-}
-
-// HTTP client
-func httpClient() WithMetrics {
-	return WithMetrics{client}
 }
