@@ -50,15 +50,15 @@ var ErrorNotAuthorized = fmt.Errorf("not authorized")
 
 // Auth is interface containing methods to authenticate and authorize users
 type Auth interface {
-	JWT(r *http.Request) *jwt.Token
-	Claims(r *http.Request) *jwt.StandardClaims
-	Tenant(issuer string) Tenant
-	Permission(audience string) Permission
+	JWT(*http.Request) *jwt.Token
+	Claims(*http.Request) *jwt.StandardClaims
+	Issuer(*jwt.StandardClaims) Issuer
+	Permission(space string) Permission
 	TokenValidationMiddleware() func(next http.Handler) http.Handler
 }
 
-// Tenant interface contains methods to check authentication
-type Tenant interface {
+// Issuer interface represents issuer interface
+type Issuer interface {
 	Trusted() bool
 }
 
@@ -95,17 +95,17 @@ func (auth *TenantAuth) Claims(r *http.Request) *jwt.StandardClaims {
 	return auth.JWT(r).Claims.(*jwt.StandardClaims)
 }
 
-// Tenant instance
-func (auth *TenantAuth) Tenant(issuer string) Tenant {
-	if tenant, ok := auth.Tenants[issuer]; ok {
+// Issuer instance
+func (auth *TenantAuth) Issuer(claims *jwt.StandardClaims) Issuer {
+	if tenant, ok := auth.Tenants[claims.Issuer]; ok {
 		return tenant
 	}
 	return nil
 }
 
 // Permission instance
-func (auth *TenantAuth) Permission(audience string) Permission {
-	if permission, ok := auth.Permissions[audience]; ok {
+func (auth *TenantAuth) Permission(space string) Permission {
+	if permission, ok := auth.Permissions[space]; ok {
 		return permission
 	}
 	return nil
@@ -130,7 +130,7 @@ func (auth *TenantAuth) TokenValidationMiddleware() func(next http.Handler) http
 				if !ok {
 					return nil, fmt.Errorf("JWT: unknown issuer (authn): %v", claims.Issuer)
 				}
-				for _, audience := range tenant.Audience {
+				for _, audience := range tenant.Audiences {
 					if claims.VerifyAudience(audience, true) {
 						goto audienceVerified
 					}
@@ -150,9 +150,9 @@ func (auth *TenantAuth) TokenValidationMiddleware() func(next http.Handler) http
 }
 
 type tenant struct {
-	Audience  []string
-	Key       string
-	IsTrusted bool `toml:"trusted"`
+	Audiences []string `toml:"audience"`
+	SecretKey string   `toml:"key"`
+	IsTrusted bool     `toml:"trusted"`
 
 	key []byte
 }
@@ -163,7 +163,7 @@ func (tenant *tenant) Trusted() bool {
 
 func (tenant *tenant) keyBytes() ([]byte, error) {
 	if tenant.key == nil {
-		if key, err := ioutil.ReadFile(tenant.Key); err == nil {
+		if key, err := ioutil.ReadFile(tenant.SecretKey); err == nil {
 			tenant.key = bytes.TrimSpace(key)
 		} else {
 			return nil, err
@@ -181,27 +181,25 @@ type permission struct {
 }
 
 func (permission *permission) Check(claims *jwt.StandardClaims, action Action, objectValues ...string) error {
-	authorizedActions := make([]Action, 0)
+	var authorizedActions []Action
 	authRequest := &authorizationRequest{
 		Action:  action,
 		Subject: &parameter{claims.Audience, []string{"accounts", claims.Subject}},
 		Object:  &parameter{permission.ServiceID, objectValues},
 	}
-	body, err := json.Marshal(authRequest)
+	body, _ := json.Marshal(authRequest)
+	request, err := http.NewRequest(http.MethodPost, permission.URL, bytes.NewBuffer(body))
 	if err == nil {
-		var request *http.Request
-		if request, err = http.NewRequest(http.MethodPost, permission.URL, bytes.NewBuffer(body)); err == nil {
-			var response *http.Response
-			request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", permission.Token))
-			request.Header.Set("Accept", "application/json")
-			request.Header.Set("Content-Type", "application/json; charset=utf-8")
-			if response, err = client.do(request, permission.metrics); err == nil {
-				defer response.Body.Close()
-				if response.StatusCode != 200 {
-					err = fmt.Errorf("non-200 response status code: %v", response.StatusCode)
-				} else {
-					err = json.NewDecoder(response.Body).Decode(&authorizedActions)
-				}
+		var response *http.Response
+		request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", permission.Token))
+		request.Header.Set("Accept", "application/json")
+		request.Header.Set("Content-Type", "application/json; charset=utf-8")
+		if response, err = client.do(request, permission.metrics); err == nil {
+			defer response.Body.Close()
+			if response.StatusCode != 200 {
+				err = fmt.Errorf("non-200 response status code: %v", response.StatusCode)
+			} else {
+				err = json.NewDecoder(response.Body).Decode(&authorizedActions)
 			}
 		}
 	}
