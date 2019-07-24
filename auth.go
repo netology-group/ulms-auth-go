@@ -65,7 +65,7 @@ type Issuer interface {
 // Permission interface contains methods to check authorization
 type Permission interface {
 	Check(claims *jwt.StandardClaims, action Action, objectValues ...string) error
-	CheckWithContext(ctx context.Context, claims *jwt.StandardClaims, action Action, objectValues ...string) error
+	CheckWithContext(ctx context.Context, cancel context.CancelFunc, claims *jwt.StandardClaims, action Action, objectValues ...string) error
 }
 
 // TenantAuth implements Auth interface using tenants
@@ -182,10 +182,11 @@ type permission struct {
 }
 
 func (permission *permission) Check(claims *jwt.StandardClaims, action Action, objectValues ...string) error {
-	return permission.CheckWithContext(nil, claims, action, objectValues...)
+	return permission.CheckWithContext(nil, nil, claims, action, objectValues...)
 }
 
-func (permission *permission) CheckWithContext(ctx context.Context, claims *jwt.StandardClaims, action Action, objectValues ...string) error {
+func (permission *permission) CheckWithContext(ctx context.Context, cancel context.CancelFunc, claims *jwt.StandardClaims, action Action, objectValues ...string) error {
+	defer cancel()
 	var authorizedActions []Action
 	authRequest := &authorizationRequest{
 		Action:  action,
