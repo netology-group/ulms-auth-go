@@ -186,7 +186,9 @@ func (permission *permission) Check(claims *jwt.StandardClaims, action Action, o
 }
 
 func (permission *permission) CheckWithContext(ctx context.Context, cancel context.CancelFunc, claims *jwt.StandardClaims, action Action, objectValues ...string) error {
-	defer cancel()
+	if cancel != nil {
+		defer cancel()
+	}
 	var authorizedActions []Action
 	authRequest := &authorizationRequest{
 		Action:  action,
