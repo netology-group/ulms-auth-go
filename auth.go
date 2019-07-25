@@ -189,6 +189,10 @@ func (permission *permission) CheckWithContext(ctx context.Context, cancel conte
 	if cancel != nil {
 		defer cancel()
 	}
+	if permission.URL == "" {
+		// always allow any action if permission.URL is not defined
+		return nil
+	}
 	var authorizedActions []Action
 	authRequest := &authorizationRequest{
 		Action:  action,
