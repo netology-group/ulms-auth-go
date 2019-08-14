@@ -13,7 +13,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"time"
 )
 
 var metrics *prometheus.SummaryVec
