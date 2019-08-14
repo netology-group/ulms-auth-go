@@ -24,7 +24,6 @@ func init() {
 			Name:       "authz_latency",
 			Help:       "Authz request latency (in seconds)",
 			Objectives: map[float64]float64{0.5: 0.05, 0.95: 0.005, 0.99: 0.001},
-			MaxAge:     time.Hour,
 		},
 		[]string{"audience", "code"},
 	)
