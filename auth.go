@@ -217,7 +217,7 @@ func (permission *permission) CheckWithContext(ctx context.Context, cancel conte
 		}
 	}
 	if err != nil {
-		return errors.Wrapf(err, "error performing authz request, URL: %v", permission.URL)
+		return errors.Wrapf(err, "error performing authz request, URL: %v, account_id: %v", permission.URL, claims.Subject)
 	}
 	for _, authorizedAction := range authorizedActions {
 		if action == authorizedAction {
