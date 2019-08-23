@@ -210,7 +210,7 @@ func (permission *permission) CheckWithContext(ctx context.Context, cancel conte
 		if response, err = client.do(request, permission.metrics); err == nil {
 			defer response.Body.Close()
 			if response.StatusCode != 200 {
-				err = fmt.Errorf("non-200 response status code: %v", response.StatusCode)
+				err = fmt.Errorf("non-200 response status code: %v, account_id: %v", response.StatusCode, claims.Subject)
 			} else {
 				err = json.NewDecoder(response.Body).Decode(&authorizedActions)
 			}
