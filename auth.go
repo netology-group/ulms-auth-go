@@ -48,8 +48,6 @@ var ErrorNotAuthorized = fmt.Errorf("not authorized")
 
 // Auth is interface containing methods to authenticate and authorize users
 type Auth interface {
-	JWT(*http.Request) *jwt.Token
-	Claims(*http.Request) *jwt.StandardClaims
 	Issuer(*jwt.StandardClaims) Issuer
 	Permission(space string) Permission
 	TokenValidationMiddleware() func(next http.Handler) http.Handler
@@ -85,13 +83,13 @@ func LoadConfiguration(configFile string) (Auth, error) {
 }
 
 // JWT returns request's JWT
-func (auth *TenantAuth) JWT(r *http.Request) *jwt.Token {
+func JWT(r *http.Request) *jwt.Token {
 	return r.Context().Value(tokenContextKey).(*jwt.Token)
 }
 
-// Claims from JWT
-func (auth *TenantAuth) Claims(r *http.Request) *jwt.StandardClaims {
-	return auth.JWT(r).Claims.(*jwt.StandardClaims)
+// Claims from request's JWT
+func Claims(r *http.Request) *jwt.StandardClaims {
+	return JWT(r).Claims.(*jwt.StandardClaims)
 }
 
 // Issuer instance
