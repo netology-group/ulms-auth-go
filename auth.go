@@ -199,6 +199,7 @@ func (permission *permission) CheckWithContext(ctx context.Context, cancel conte
 	}
 	body, _ := json.Marshal(authRequest)
 	request, err := http.NewRequest(http.MethodPost, permission.URL, bytes.NewBuffer(body))
+	attempt := 1
 	if err == nil {
 		if ctx != nil {
 			request = request.WithContext(ctx)
@@ -207,7 +208,6 @@ func (permission *permission) CheckWithContext(ctx context.Context, cancel conte
 		request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", permission.Token))
 		request.Header.Set("Accept", "application/json")
 		request.Header.Set("Content-Type", "application/json; charset=utf-8")
-		attempt := 1
 		for {
 			if response, err = client.do(request, permission.metrics); err == nil {
 				if response.StatusCode != 200 {
@@ -224,7 +224,7 @@ func (permission *permission) CheckWithContext(ctx context.Context, cancel conte
 		}
 	}
 	if err != nil {
-		return errors.Wrapf(err, "error performing authz request, URL: %v", permission.URL)
+		return errors.Wrapf(err, "error performing authz request, attempts: %d, URL: %s", attempt, permission.URL)
 	}
 	for _, authorizedAction := range authorizedActions {
 		if action == authorizedAction {
