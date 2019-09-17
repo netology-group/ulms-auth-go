@@ -174,6 +174,8 @@ type permission struct {
 	Token     string `toml:"token"`
 	ServiceID string `toml:"service_id"`
 
+	MaxRetryAttempts int `toml:"max_retry_attempts"`
+
 	metrics prometheus.ObserverVec
 }
 
@@ -205,13 +207,20 @@ func (permission *permission) CheckWithContext(ctx context.Context, cancel conte
 		request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", permission.Token))
 		request.Header.Set("Accept", "application/json")
 		request.Header.Set("Content-Type", "application/json; charset=utf-8")
-		if response, err = client.do(request, permission.metrics); err == nil {
-			defer response.Body.Close()
-			if response.StatusCode != 200 {
-				err = fmt.Errorf("non-200 response status code: %v", response.StatusCode)
-			} else {
-				err = json.NewDecoder(response.Body).Decode(&authorizedActions)
+		attempt := 1
+		for {
+			if response, err = client.do(request, permission.metrics); err == nil {
+				if response.StatusCode != 200 {
+					err = fmt.Errorf("non-200 response status code: %v", response.StatusCode)
+				} else {
+					err = json.NewDecoder(response.Body).Decode(&authorizedActions)
+				}
+				_ = response.Body.Close()
 			}
+			if err == nil || attempt >= permission.MaxRetryAttempts+1 {
+				break
+			}
+			attempt++
 		}
 	}
 	if err != nil {
