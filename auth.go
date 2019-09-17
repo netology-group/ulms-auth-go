@@ -84,12 +84,21 @@ func LoadConfiguration(configFile string) (Auth, error) {
 
 // JWT returns request's JWT
 func JWT(r *http.Request) *jwt.Token {
-	return r.Context().Value(tokenContextKey).(*jwt.Token)
+	if token, ok := r.Context().Value(tokenContextKey).(*jwt.Token); ok {
+		return token
+	}
+	return nil
 }
 
 // Claims from request's JWT
 func Claims(r *http.Request) *jwt.StandardClaims {
-	return JWT(r).Claims.(*jwt.StandardClaims)
+	token := JWT(r)
+	if token != nil {
+		if claims, ok := token.Claims.(*jwt.StandardClaims); ok {
+			return claims
+		}
+	}
+	return nil
 }
 
 // Issuer instance
