@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"github.com/BurntSushi/toml"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/go-redis/cache/v7"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 )
 
 var metrics *prometheus.SummaryVec
@@ -71,13 +73,14 @@ type TenantAuth struct {
 }
 
 // LoadConfiguration loads current TenantAuth configuration
-func LoadConfiguration(configFile string) (Auth, error) {
+func LoadConfiguration(configFile string, cacheCodec *cache.Codec) (Auth, error) {
 	auth := &TenantAuth{}
 	if _, err := toml.DecodeFile(configFile, auth); err != nil {
 		return nil, err
 	}
 	for audience, permission := range auth.Permissions {
 		permission.metrics = metrics.MustCurryWith(prometheus.Labels{"audience": audience})
+		permission.cacheCodec = cacheCodec
 	}
 	return auth, nil
 }
@@ -183,13 +186,33 @@ type permission struct {
 	Token     string `toml:"token"`
 	ServiceID string `toml:"service_id"`
 
-	MaxRetryAttempts int `toml:"max_retry_attempts"`
+	MaxRetryAttempts int `toml:"max-retry-attempts"`
 
-	metrics prometheus.ObserverVec
-	ctx     context.Context
+	CacheTTL int `toml:"cache-ttl"`
+
+	metrics    prometheus.ObserverVec
+	ctx        context.Context
+	cacheCodec *cache.Codec
 }
 
 func (p *permission) Check(claims *jwt.StandardClaims, action Action, objectValues ...string) error {
+	if p.cacheCodec == nil {
+		return p.check(claims, action, objectValues...)
+	}
+	return p.cacheCodec.Once(&cache.Item{
+		Ctx:    p.ctx,
+		Key:    fmt.Sprintf("authz:%v:%v:%v:%v:%v:%v", p.URL, p.ServiceID, claims.Audience, claims.Subject, action, strings.Join(objectValues, ":")),
+		Object: new(struct{}),
+		Func: func() (interface{}, error) {
+			if err := p.check(claims, action, objectValues...); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		},
+		Expiration: time.Duration(p.CacheTTL) * time.Second,
+	})
+}
+func (p *permission) check(claims *jwt.StandardClaims, action Action, objectValues ...string) error {
 	if p.URL == "" {
 		// always allow any action if permission.URL is not defined
 		return nil
