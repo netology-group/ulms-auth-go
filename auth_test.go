@@ -139,14 +139,11 @@ func TestPermissionCheckFromCache(t *testing.T) {
 	key := fmt.Sprintf("authz:%v:%v:%v:%v:%v:", URL, serviceID, claims.Audience, claims.Subject, action)
 	_ = codec.Delete(key)
 	perm := &permission{
-		URL:              URL,
-		Token:            "token",
-		ServiceID:        serviceID,
-		MaxRetryAttempts: 0,
-		CacheTTL:         60,
-		metrics:          metrics,
-		ctx:              nil,
-		cacheCodec:       codec,
+		URL:        URL,
+		Token:      "token",
+		ServiceID:  serviceID,
+		CacheTTL:   60,
+		cacheCodec: codec,
 	}
 	assert.Error(t, perm.Check(claims, Action(action)))
 	assert.Error(t, codec.Get(key, new(struct{}))) // should not cache errors
