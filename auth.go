@@ -61,7 +61,7 @@ type Issuer interface {
 // Permission interface contains methods to check authorization
 type Permission interface {
 	Check(claims *jwt.StandardClaims, action Action, objectValues ...string) error
-	CheckWithContext(ctx context.Context, cancel context.CancelFunc, claims *jwt.StandardClaims, action Action, objectValues ...string) error
+	WithContext(ctx context.Context) Permission
 }
 
 // TenantAuth implements Auth interface using tenants
@@ -186,17 +186,11 @@ type permission struct {
 	MaxRetryAttempts int `toml:"max_retry_attempts"`
 
 	metrics prometheus.ObserverVec
+	ctx     context.Context
 }
 
-func (permission *permission) Check(claims *jwt.StandardClaims, action Action, objectValues ...string) error {
-	return permission.CheckWithContext(nil, nil, claims, action, objectValues...)
-}
-
-func (permission *permission) CheckWithContext(ctx context.Context, cancel context.CancelFunc, claims *jwt.StandardClaims, action Action, objectValues ...string) error {
-	if cancel != nil {
-		defer cancel()
-	}
-	if permission.URL == "" {
+func (p *permission) Check(claims *jwt.StandardClaims, action Action, objectValues ...string) error {
+	if p.URL == "" {
 		// always allow any action if permission.URL is not defined
 		return nil
 	}
@@ -204,21 +198,21 @@ func (permission *permission) CheckWithContext(ctx context.Context, cancel conte
 	authRequest := &authorizationRequest{
 		Action:  action,
 		Subject: &parameter{claims.Audience, []string{"accounts", claims.Subject}},
-		Object:  &parameter{permission.ServiceID, objectValues},
+		Object:  &parameter{p.ServiceID, objectValues},
 	}
 	body, _ := json.Marshal(authRequest)
-	request, err := http.NewRequest(http.MethodPost, permission.URL, bytes.NewBuffer(body))
+	request, err := http.NewRequest(http.MethodPost, p.URL, bytes.NewBuffer(body))
 	attempt := 1
 	if err == nil {
-		if ctx != nil {
-			request = request.WithContext(ctx)
+		if p.ctx != nil {
+			request = request.WithContext(p.ctx)
 		}
 		var response *http.Response
-		request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", permission.Token))
+		request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", p.Token))
 		request.Header.Set("Accept", "application/json")
 		request.Header.Set("Content-Type", "application/json; charset=utf-8")
 		for {
-			if response, err = client.do(request, permission.metrics); err == nil {
+			if response, err = client.do(request, p.metrics); err == nil {
 				if response.StatusCode != 200 {
 					err = fmt.Errorf("non-200 response status code: %v", response.StatusCode)
 				} else {
@@ -226,14 +220,14 @@ func (permission *permission) CheckWithContext(ctx context.Context, cancel conte
 				}
 				_ = response.Body.Close()
 			}
-			if err == nil || attempt >= permission.MaxRetryAttempts+1 {
+			if err == nil || attempt >= p.MaxRetryAttempts+1 {
 				break
 			}
 			attempt++
 		}
 	}
 	if err != nil {
-		return errors.Wrapf(err, "error performing authz request, attempts: %d, URL: %s", attempt, permission.URL)
+		return errors.Wrapf(err, "error performing authz request, attempts: %d, URL: %s", attempt, p.URL)
 	}
 	for _, authorizedAction := range authorizedActions {
 		if action == authorizedAction {
@@ -241,6 +235,17 @@ func (permission *permission) CheckWithContext(ctx context.Context, cancel conte
 		}
 	}
 	return ErrorNotAuthorized
+}
+
+func (p *permission) WithContext(ctx context.Context) Permission {
+	return &permission{
+		URL:              p.URL,
+		Token:            p.Token,
+		ServiceID:        p.ServiceID,
+		MaxRetryAttempts: p.MaxRetryAttempts,
+		metrics:          p.metrics,
+		ctx:              ctx,
+	}
 }
 
 type authorizationRequest struct {
