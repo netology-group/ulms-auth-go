@@ -143,6 +143,7 @@ func TestPermissionCheckFromCache(t *testing.T) {
 		Token:            "token",
 		ServiceID:        serviceID,
 		MaxRetryAttempts: 0,
+		CacheTTL:         60,
 		metrics:          metrics,
 		ctx:              nil,
 		cacheCodec:       codec,
