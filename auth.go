@@ -196,7 +196,7 @@ type permission struct {
 }
 
 func (p *permission) Check(claims *jwt.StandardClaims, action Action, objectValues ...string) error {
-	if p.cacheCodec == nil {
+	if p.cacheCodec == nil || p.CacheTTL == 0 {
 		return p.check(claims, action, objectValues...)
 	}
 	return p.cacheCodec.Once(&cache.Item{
