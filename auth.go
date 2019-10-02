@@ -186,9 +186,9 @@ type permission struct {
 	Token     string `toml:"token"`
 	ServiceID string `toml:"service_id"`
 
-	MaxRetryAttempts int `toml:"max-retry-attempts"`
+	MaxRetryAttempts int `toml:"max_retry_attempts"`
 
-	CacheTTL int `toml:"cache-ttl"`
+	CacheTTL int `toml:"cache_ttl"`
 
 	metrics    prometheus.ObserverVec
 	ctx        context.Context
