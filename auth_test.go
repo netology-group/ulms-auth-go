@@ -136,7 +136,7 @@ func TestPermissionCheckFromCache(t *testing.T) {
 	serviceID := "service-id"
 	action := "action"
 	claims := &jwt.StandardClaims{}
-	key := fmt.Sprintf("authz:%v:%v:%v:%v:%v:", URL, serviceID, claims.Audience, claims.Subject, action)
+	key := fmt.Sprintf("ulms-go:authz:%v:%v:%v:%v:%v:", URL, serviceID, claims.Audience, claims.Subject, action)
 	_ = codec.Delete(key)
 	perm := &permission{
 		URL:        URL,

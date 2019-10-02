@@ -201,7 +201,7 @@ func (p *permission) Check(claims *jwt.StandardClaims, action Action, objectValu
 	}
 	return p.cacheCodec.Once(&cache.Item{
 		Ctx:    p.ctx,
-		Key:    fmt.Sprintf("authz:%v:%v:%v:%v:%v:%v", p.URL, p.ServiceID, claims.Audience, claims.Subject, action, strings.Join(objectValues, ":")),
+		Key:    fmt.Sprintf("ulms-go:authz:%v:%v:%v:%v:%v:%v", p.URL, p.ServiceID, claims.Audience, claims.Subject, action, strings.Join(objectValues, ":")),
 		Object: new(struct{}),
 		Func: func() (interface{}, error) {
 			if err := p.check(claims, action, objectValues...); err != nil {
