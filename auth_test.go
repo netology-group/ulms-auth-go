@@ -1,8 +1,11 @@
 package auth
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/go-redis/cache/v7"
+	"github.com/go-redis/redis/v7"
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
@@ -63,7 +66,7 @@ var cases = map[string]struct {
 }
 
 func TestJWTValidationErrorsOverQuery(t *testing.T) {
-	auth, err := LoadConfiguration("fixtures/auth.toml")
+	auth, err := LoadConfiguration("fixtures/auth.toml", nil)
 	assert.NoError(t, err)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -89,7 +92,7 @@ func TestJWTValidationErrorsOverQuery(t *testing.T) {
 }
 
 func TestJWTValidationErrorsOverHeader(t *testing.T) {
-	auth, err := LoadConfiguration("fixtures/auth.toml")
+	auth, err := LoadConfiguration("fixtures/auth.toml", nil)
 	assert.NoError(t, err)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -112,4 +115,41 @@ func TestJWTValidationErrorsOverHeader(t *testing.T) {
 			assert.Equal(t, testCase.expectedBody, response.Body.String())
 		})
 	}
+}
+
+func TestPermissionCheckFromCache(t *testing.T) {
+	ring := redis.NewRing(&redis.RingOptions{
+		Addrs: map[string]string{
+			"redis": ":6379",
+		},
+	})
+	codec := &cache.Codec{
+		Redis: ring,
+		Marshal: func(v interface{}) ([]byte, error) {
+			return json.Marshal(v)
+		},
+		Unmarshal: func(b []byte, v interface{}) error {
+			return json.Unmarshal(b, v)
+		},
+	}
+	URL := "url"
+	serviceID := "service-id"
+	action := "action"
+	claims := &jwt.StandardClaims{}
+	key := fmt.Sprintf("ulms-go:authz:%v:%v:%v:%v:%v:", URL, serviceID, claims.Audience, claims.Subject, action)
+	_ = codec.Delete(key)
+	perm := &permission{
+		URL:        URL,
+		Token:      "token",
+		ServiceID:  serviceID,
+		CacheTTL:   60,
+		cacheCodec: codec,
+	}
+	assert.Error(t, perm.Check(claims, Action(action)))
+	assert.Error(t, codec.Get(key, new(struct{}))) // should not cache errors
+	assert.NoError(t, codec.Set(&cache.Item{       // store result in cache
+		Key:        key,
+		Expiration: time.Minute,
+	}))
+	assert.NoError(t, perm.Check(claims, Action(action))) // result without error from cache
 }
