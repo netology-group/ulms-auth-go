@@ -19,6 +19,8 @@ import (
 
 var metrics *prometheus.SummaryVec
 
+type permissionCheckResult struct{}
+
 func init() {
 	metrics = promauto.NewSummaryVec(
 		prometheus.SummaryOpts{
@@ -202,12 +204,12 @@ func (p *permission) Check(claims *jwt.StandardClaims, action Action, objectValu
 	return p.cacheCodec.Once(&cache.Item{
 		Ctx:    p.ctx,
 		Key:    fmt.Sprintf("ulms-go:authz:%v:%v:%v:%v:%v:%v", p.URL, p.ServiceID, claims.Audience, claims.Subject, action, strings.Join(objectValues, ":")),
-		Object: new(struct{}),
+		Object: new(permissionCheckResult),
 		Func: func() (interface{}, error) {
 			if err := p.check(claims, action, objectValues...); err != nil {
 				return nil, err
 			}
-			return nil, nil
+			return &permissionCheckResult{}, nil
 		},
 		Expiration: time.Duration(p.CacheTTL) * time.Second,
 	})
