@@ -214,7 +214,7 @@ func (p *permission) Check(claims *jwt.StandardClaims, action Action, objectValu
 		Expiration: time.Duration(p.CacheTTL) * time.Second,
 	})
 }
-func (p *permission) check(claims *jwt.StandardClaims, action Action, objectValues ...string) error {
+func (p *permission) check(claims *jwt.StandardClaims, action Action, objectValues ...string) (err error) {
 	if p.URL == "" {
 		// always allow any action if permission.URL is not defined
 		return nil
@@ -226,30 +226,33 @@ func (p *permission) check(claims *jwt.StandardClaims, action Action, objectValu
 		Object:  &parameter{p.ServiceID, objectValues},
 	}
 	body, _ := json.Marshal(authRequest)
-	request, err := http.NewRequest(http.MethodPost, p.URL, bytes.NewBuffer(body))
 	attempt := 1
-	if err == nil {
+	var (
+		response *http.Response
+		request  *http.Request
+	)
+	for {
+		if request, err = http.NewRequest(http.MethodPost, p.URL, bytes.NewBuffer(body)); err != nil {
+			break
+		}
 		if p.ctx != nil {
 			request = request.WithContext(p.ctx)
 		}
-		var response *http.Response
 		request.Header.Set("Authorization", fmt.Sprintf("Bearer %v", p.Token))
 		request.Header.Set("Accept", "application/json")
 		request.Header.Set("Content-Type", "application/json; charset=utf-8")
-		for {
-			if response, err = client.do(request, p.metrics); err == nil {
-				if response.StatusCode != 200 {
-					err = fmt.Errorf("non-200 response status code: %v", response.StatusCode)
-				} else {
-					err = json.NewDecoder(response.Body).Decode(&authorizedActions)
-				}
-				_ = response.Body.Close()
+		if response, err = client.do(request, p.metrics); err == nil {
+			if response.StatusCode != 200 {
+				err = fmt.Errorf("non-200 response status code: %v", response.StatusCode)
+			} else {
+				err = json.NewDecoder(response.Body).Decode(&authorizedActions)
 			}
-			if err == nil || attempt >= p.MaxRetryAttempts+1 {
-				break
-			}
-			attempt++
+			_ = response.Body.Close()
 		}
+		if err == nil || attempt >= p.MaxRetryAttempts+1 {
+			break
+		}
+		attempt++
 	}
 	if err != nil {
 		return errors.Wrapf(err, "error performing authz request, attempts: %d, URL: %s", attempt, p.URL)
